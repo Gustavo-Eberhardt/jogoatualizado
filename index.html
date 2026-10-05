@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Neon Snake</title>
+</head>
+<body>
+
+    <h1>NEON SNAKE</h1>
+
+    <p>Setas/WASD para mover. Espaço: Pausa. R: Reiniciar. 1/2: Trocar mapa.</p>
+
+    <div class="HUD">
+        <span>Pontos: <strong id="score">0</strong></span>
+        <span>Recorde: <strong id="snake-best">0</strong></span>
+        <span>Mapa: <strong id="map">1</strong></span>
+        <span>Estado: <strong id="state">PRONTO</strong></span>
+    </div>
+
+    <canvas
+        id="game"
+        width="384"
+        height="384"
+        aria-label="Área do jogo da cobra">
+    </canvas>
+
+    <p class="hint">
+        Coma as maçãs. Evite as paredes, seu próprio corpo e os obstáculos.
+    </p>
+
+    <script src="script.js"></script>
+</body>
+</html>
