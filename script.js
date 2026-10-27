@@ -1,221 +1,207 @@
-const canvas = document.getElementById("game")
-const ctx = canvas.getContext("2d")
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-const scoreEl = document.getElementById("score")
-const stateEl = document.getElementById("state")
-const bestEl = document.getElementById("snake-best")
-const mapEl = document.getElementById("map")
-
-const CELL = 24
-const COLS = canvas.width / CELL
-const ROWS = canvas.height / CELL
+const scoreEl = document.getElementById("score");
+const bestEl = document.getElementById("best");
+const levelEl = document.getElementById("level");
+const stateEl = document.getElementById("state");
 
 const STATES = {
     READY: "PRONTO",
     PLAYING: "JOGANDO",
     PAUSED: "PAUSADO",
-    OVER: "GAME OVER"
-}
+    OVER: "GAME OVER",
+    WIN: "NÍVEL CONCLUÍDO"
+};
+
 
 // =====================================================
-// MAPAS
+// RAQUETE
 // =====================================================
 
-const maps = {
-    1: {
-        name: "ABERTO",
-        speed: 90,
+const paddle = {
+    width: 90,
+    originalWidth: 90,
+    minWidth: 48,
+    height: 12,
+    x: canvas.width / 2 - 45,
+    y: canvas.height - 34,
+    speed: 7
+};
 
-        obstacles: [
-            { x: 4, y: 4 },
-            { x: 5, y: 4 },
-            { x: 6, y: 4 },
-
-            { x: 13, y: 12 },
-            { x: 14, y: 12 },
-            { x: 15, y: 12 }
-        ]
-    },
-
-    2: {
-        name: "TÁTICO",
-        speed: 125,
-
-        obstacles: [
-            { x: 3, y: 3 },
-            { x: 4, y: 3 },
-            { x: 5, y: 3 },
-            { x: 6, y: 3 },
-
-            { x: 13, y: 3 },
-            { x: 14, y: 3 },
-            { x: 15, y: 3 },
-
-            { x: 3, y: 12 },
-            { x: 3, y: 13 },
-            { x: 3, y: 14 },
-
-            { x: 15, y: 12 },
-            { x: 15, y: 13 },
-            { x: 15, y: 14 },
-
-            { x: 8, y: 7 },
-            { x: 9, y: 7 },
-            { x: 10, y: 7 },
-
-            { x: 8, y: 12 },
-            { x: 9, y: 12 },
-            { x: 10, y: 12 }
-        ]
-    }
-}
 
 // =====================================================
-// VARIÁVEIS DO JOGO
+// BOLA
 // =====================================================
 
-let currentMap = 1
+const ball = {
+    x: canvas.width / 2,
+    y: paddle.y - 10,
+    radius: 7,
+    vx: 3.2,
+    vy: -4.2,
+    speed: 5.3
+};
 
-let state = STATES.READY
-
-let snake = []
-
-let dir = {
-    x: 1,
-    y: 0
-}
-
-let nextDir = {
-    x: 1,
-    y: 0
-}
-
-let food = {
-    x: 10,
-    y: 10
-}
-
-let score = 0
-
-let acc = 0
-let last = 0
-
-let best = Number(localStorage.getItem("snake-best")) || 0
-
-bestEl.textContent = best
 
 // =====================================================
-// MAPA ATUAL
+// VARIÁVEIS
 // =====================================================
 
-function getMap() {
-    return maps[currentMap]
-}
+let score = 0;
+let best = Number(localStorage.getItem("neon-breakout-best")) || 0;
+let level = 1;
+
+let state = STATES.READY;
+
+let rightPressed = false;
+let leftPressed = false;
+
+let bricks = [];
+
+let destroyedBricks = 0;
+
+// Power-up
+let pickup = null;
+
+// Efeito da raquete
+let paddleWide = false;
+let paddleWideUntil = 0;
+
 
 // =====================================================
-// RESET
+// LAYOUT AUTORAL DOS TIJOLOS
 // =====================================================
 
-function reset() {
+function createBricks() {
 
-    const midX = Math.floor(COLS / 2)
-    const midY = Math.floor(ROWS / 2)
+    bricks = [];
 
-    snake = [
-        { x: midX, y: midY },
-        { x: midX - 1, y: midY },
-        { x: midX - 2, y: midY }
-    ]
+    /*
+    Layout autoral em forma de pirâmide com um corredor central.
 
-    dir = {
-        x: 1,
-        y: 0
-    }
+    O jogador arrisca a bola no topo porque precisa direcioná-la
+    por espaços menores e rebater em ângulos mais difíceis.
 
-    nextDir = {
-        x: 1,
-        y: 0
-    }
+    As fileiras superiores valem mais pontos, criando uma relação
+    de risco e recompensa.
+    */
 
-    score = 0
-
-    acc = 0
-
-    scoreEl.textContent = score
-
-    mapEl.textContent = `${currentMap} - ${getMap().name}`
-
-    spawnApple()
-
-    state = STATES.READY
-
-    stateEl.textContent = state
-}
-
-// =====================================================
-// OBSTÁCULOS
-// =====================================================
-
-function isObstacle(x, y) {
-
-    return getMap().obstacles.some(
-        obstacle =>
-            obstacle.x === x &&
-            obstacle.y === y
-    )
-}
-
-// =====================================================
-// COBRA
-// =====================================================
-
-function isSnake(x, y) {
-
-    return snake.some(
-        segment =>
-            segment.x === x &&
-            segment.y === y
-    )
-}
-
-// =====================================================
-// COMIDA
-// =====================================================
-
-function spawnApple() {
-
-    do {
-
-        food = {
-            x: Math.floor(Math.random() * COLS),
-            y: Math.floor(Math.random() * ROWS)
+    const rows = [
+        {
+            y: 70,
+            xPositions: [150, 190, 230, 270],
+            points: 50
+        },
+        {
+            y: 105,
+            xPositions: [110, 150, 190, 230, 270, 310],
+            points: 40
+        },
+        {
+            y: 140,
+            xPositions: [70, 110, 150, 190, 230, 270, 310, 350],
+            points: 30
+        },
+        {
+            y: 175,
+            xPositions: [70, 110, 150, 230, 270, 310, 350],
+            points: 20
+        },
+        {
+            y: 210,
+            xPositions: [110, 150, 190, 230, 270, 310],
+            points: 10
         }
+    ];
 
-    } while (
-        isSnake(food.x, food.y) ||
-        isObstacle(food.x, food.y)
-    )
+    rows.forEach((row, rowIndex) => {
+
+        row.xPositions.forEach((x, index) => {
+
+            // Tijolo blindado: precisa de dois impactos.
+            const armored =
+                rowIndex === 2 && index === 3;
+
+            bricks.push({
+                x: x,
+                y: row.y,
+                width: 34,
+                height: 20,
+                points: row.points,
+                alive: true,
+                hp: armored ? 2 : 1,
+                armored: armored
+            });
+
+        });
+
+    });
+
 }
 
+
 // =====================================================
-// DIREÇÃO
+// ESTADO DO JOGO
 // =====================================================
 
-function setDirection(x, y) {
+function updateState(newState) {
 
-    // Impede uma curva de 180 graus
-    if (
-        dir.x + x === 0 &&
-        dir.y + y === 0
-    ) {
-        return
-    }
+    state = newState;
 
-    nextDir = {
-        x,
-        y
-    }
+    stateEl.textContent = state;
+
 }
+
+
+// =====================================================
+// RESET / INÍCIO
+// =====================================================
+
+function resetGame() {
+
+    score = 0;
+    level = 1;
+
+    destroyedBricks = 0;
+
+    paddle.width = paddle.originalWidth;
+
+    paddleWide = false;
+    paddleWideUntil = 0;
+
+    pickup = null;
+
+    paddle.x =
+        canvas.width / 2 - paddle.width / 2;
+
+    resetBall();
+
+    createBricks();
+
+    scoreEl.textContent = score;
+    levelEl.textContent = level;
+
+    updateState(STATES.READY);
+
+}
+
+
+function resetBall() {
+
+    ball.x =
+        paddle.x + paddle.width / 2;
+
+    ball.y =
+        paddle.y - ball.radius - 1;
+
+    ball.vx = 3.2;
+    ball.vy = -4.2;
+
+    ball.speed = 5.3;
+
+}
+
 
 // =====================================================
 // CONTROLES
@@ -223,349 +209,826 @@ function setDirection(x, y) {
 
 window.addEventListener("keydown", (e) => {
 
-    const key = e.key.toLowerCase()
+    const key = e.key.toLowerCase();
 
-    // Movimento
-    if (key === "arrowup" || key === "w") {
-        setDirection(0, -1)
-    }
-
-    if (key === "arrowdown" || key === "s") {
-        setDirection(0, 1)
-    }
-
-    if (key === "arrowleft" || key === "a") {
-        setDirection(-1, 0)
+    if (
+        ["arrowleft", "arrowright", " "].includes(key)
+    ) {
+        e.preventDefault();
     }
 
     if (key === "arrowright" || key === "d") {
-        setDirection(1, 0)
+        rightPressed = true;
+    }
+
+    if (key === "arrowleft" || key === "a") {
+        leftPressed = true;
+    }
+
+    // Iniciar e pausar
+    if (
+        key === " " &&
+        (
+            state === STATES.READY ||
+            state === STATES.PAUSED
+        )
+    ) {
+
+        updateState(STATES.PLAYING);
+
+    } else if (
+        key === " " &&
+        state === STATES.PLAYING
+    ) {
+
+        updateState(STATES.PAUSED);
+
     }
 
     // Reiniciar
     if (key === "r") {
-        reset()
+        resetGame();
     }
 
-    // Mapa 1
-    if (key === "1") {
+});
 
-        currentMap = 1
 
-        reset()
+window.addEventListener("keyup", (e) => {
+
+    const key = e.key.toLowerCase();
+
+    if (key === "arrowright" || key === "d") {
+        rightPressed = false;
     }
 
-    // Mapa 2
-    if (key === "2") {
-
-        currentMap = 2
-
-        reset()
+    if (key === "arrowleft" || key === "a") {
+        leftPressed = false;
     }
 
-    // Pausa
-    if (key === " ") {
+});
 
-        if (state === STATES.PLAYING) {
 
-            state = STATES.PAUSED
+// =====================================================
+// CURVA DE DIFICULDADE
+// =====================================================
+
+function nextLevel() {
+
+    level++;
+
+    // A raquete encolhe 8 px a cada nível concluído.
+    // Ela nunca fica menor que 48 px.
+    paddle.width = Math.max(
+        paddle.minWidth,
+        paddle.originalWidth - ((level - 1) * 8)
+    );
+
+    paddle.x =
+        canvas.width / 2 - paddle.width / 2;
+
+    destroyedBricks = 0;
+
+    pickup = null;
+
+    paddleWide = false;
+    paddleWideUntil = 0;
+
+    // Aumenta levemente a velocidade da bola a cada nível.
+    ball.speed = Math.min(
+        7,
+        5.3 + ((level - 1) * 0.25)
+    );
+
+    resetBall();
+
+    createBricks();
+
+    levelEl.textContent = level;
+
+    updateState(STATES.READY);
+
+}
+
+
+// =====================================================
+// POWER-UP
+// =====================================================
+
+function spawnPickup(x, y) {
+
+    // Só existe um power-up caindo por vez.
+    if (pickup !== null) {
+        return;
+    }
+
+    pickup = {
+        x: x,
+        y: y,
+        width: 20,
+        height: 20,
+        speed: 2.5
+    };
+
+}
+
+
+// =====================================================
+// PEGAR POWER-UP
+// =====================================================
+
+function collectPickup() {
+
+    // Aumenta a raquete temporariamente.
+    paddleWide = true;
+
+    // Efeito dura 8 segundos.
+    paddleWideUntil = Date.now() + 8000;
+
+    // Aumenta a raquete em 40 px.
+    paddle.width = Math.min(
+        paddle.originalWidth + 40,
+        130
+    );
+
+    // Impede a raquete de sair da tela.
+    paddle.x = Math.max(
+        0,
+        Math.min(
+            canvas.width - paddle.width,
+            paddle.x
+        )
+    );
+
+    pickup = null;
+
+}
+
+
+// =====================================================
+// RECORDES
+// =====================================================
+
+function saveBest() {
+
+    if (score > best) {
+
+        best = score;
+
+        localStorage.setItem(
+            "neon-breakout-best",
+            String(best)
+        );
+
+        bestEl.textContent = best;
+
+    }
+
+}
+
+
+// =====================================================
+// ATUALIZAÇÃO DO JOGO
+// =====================================================
+
+function update() {
+
+    // Movimento da raquete
+    if (rightPressed) {
+        paddle.x += paddle.speed;
+    }
+
+    if (leftPressed) {
+        paddle.x -= paddle.speed;
+    }
+
+    // Impede a raquete de sair da tela
+    paddle.x = Math.max(
+        0,
+        Math.min(
+            canvas.width - paddle.width,
+            paddle.x
+        )
+    );
+
+
+    // =================================================
+    // POWER-UP: TEMPO DO EFEITO
+    // =================================================
+
+    if (
+        paddleWide &&
+        Date.now() >= paddleWideUntil
+    ) {
+
+        paddleWide = false;
+
+        paddle.width = Math.max(
+            paddle.minWidth,
+            paddle.originalWidth - ((level - 1) * 8)
+        );
+
+        paddle.x = Math.max(
+            0,
+            Math.min(
+                canvas.width - paddle.width,
+                paddle.x
+            )
+        );
+
+    }
+
+
+    // =================================================
+    // POWER-UP: MOVIMENTO DO ITEM
+    // =================================================
+
+    if (pickup !== null && state === STATES.PLAYING) {
+
+        pickup.y += pickup.speed;
+
+        // Colisão do item com a raquete
+        const caught =
+            pickup.y + pickup.height >= paddle.y &&
+            pickup.y <= paddle.y + paddle.height &&
+            pickup.x + pickup.width >= paddle.x &&
+            pickup.x <= paddle.x + paddle.width;
+
+        if (caught) {
+
+            collectPickup();
 
         } else if (
-            state === STATES.PAUSED ||
-            state === STATES.READY
+            pickup.y > canvas.height
         ) {
 
-            state = STATES.PLAYING
+            // Item caiu sem ser pego
+            pickup = null;
+
         }
 
-        stateEl.textContent = state
     }
 
-    // Começar o jogo usando movimento
-    if (
-        state === STATES.READY &&
-        [
-            "arrowup",
-            "arrowdown",
-            "arrowleft",
-            "arrowright",
-            "w",
-            "a",
-            "s",
-            "d"
-        ].includes(key)
-    ) {
 
-        state = STATES.PLAYING
+    // =================================================
+    // BOLA PARADA ANTES DO JOGO
+    // =================================================
 
-        stateEl.textContent = state
-    }
-})
+    if (state !== STATES.PLAYING) {
 
-// =====================================================
-// TICK
-// =====================================================
+        if (state === STATES.READY) {
 
-function tick() {
+            ball.x =
+                paddle.x + paddle.width / 2;
 
-    dir = nextDir
+            ball.y =
+                paddle.y - ball.radius - 1;
 
-    const head = {
-        x: snake[0].x + dir.x,
-        y: snake[0].y + dir.y
-    }
-
-    // Parede
-    const hitWall =
-        head.x < 0 ||
-        head.y < 0 ||
-        head.x >= COLS ||
-        head.y >= ROWS
-
-    // Corpo
-    const hitBody = snake.some(
-        segment =>
-            segment.x === head.x &&
-            segment.y === head.y
-    )
-
-    // Obstáculo
-    const hitObstacle =
-        isObstacle(head.x, head.y)
-
-    // Game Over
-    if (
-        hitWall ||
-        hitBody ||
-        hitObstacle
-    ) {
-
-        state = STATES.OVER
-
-        stateEl.textContent = state
-
-        if (score > best) {
-
-            best = score
-
-            localStorage.setItem(
-                "snake-best",
-                String(best)
-            )
-
-            bestEl.textContent = best
         }
 
-        return
+        return;
+
     }
 
-    // Nova cabeça
-    snake.unshift(head)
 
-    // Comeu
-    if (
-        head.x === food.x &&
-        head.y === food.y
-    ) {
+    // =================================================
+    // MOVIMENTO DA BOLA
+    // =================================================
 
-        score += 10
+    ball.x += ball.vx;
+    ball.y += ball.vy;
 
-        scoreEl.textContent = score
 
-        spawnApple()
+    // =================================================
+    // COLISÃO COM AS PAREDES
+    // =================================================
 
-    } else {
+    // Parede esquerda
+    if (ball.x - ball.radius <= 0) {
 
-        // Não comeu
-        snake.pop()
+        ball.x = ball.radius;
+
+        ball.vx = Math.abs(ball.vx);
+
     }
+
+    // Parede direita
+    if (ball.x + ball.radius >= canvas.width) {
+
+        ball.x = canvas.width - ball.radius;
+
+        ball.vx = -Math.abs(ball.vx);
+
+    }
+
+    // Teto
+    if (ball.y - ball.radius <= 0) {
+
+        ball.y = ball.radius;
+
+        ball.vy = Math.abs(ball.vy);
+
+    }
+
+
+    // =================================================
+    // QUIQUE NA RAQUETE
+    // =================================================
+
+    const hitPaddle =
+        ball.vy > 0 &&
+        ball.y + ball.radius >= paddle.y &&
+        ball.y - ball.radius <= paddle.y + paddle.height &&
+        ball.x >= paddle.x &&
+        ball.x <= paddle.x + paddle.width;
+
+    if (hitPaddle) {
+
+        // Posiciona a bola acima da raquete.
+        ball.y = paddle.y - ball.radius;
+
+        // Calcula o ponto de contato.
+        const hitPosition =
+            (
+                ball.x -
+                (paddle.x + paddle.width / 2)
+            ) /
+            (paddle.width / 2);
+
+        // Ângulo de até 60 graus nas pontas.
+        const angle =
+            hitPosition * (Math.PI / 3);
+
+        // Aumenta a velocidade levemente.
+        ball.speed = Math.min(
+            7,
+            Math.hypot(ball.vx, ball.vy) + 0.08
+        );
+
+        ball.vx =
+            ball.speed * Math.sin(angle);
+
+        // Garante que a bola suba após o quique.
+        ball.vy =
+            -Math.abs(
+                ball.speed * Math.cos(angle)
+            );
+
+    }
+
+
+    // =================================================
+    // PERDEU A BOLA
+    // =================================================
+
+    if (ball.y - ball.radius > canvas.height) {
+
+        updateState(STATES.OVER);
+
+        saveBest();
+
+        return;
+
+    }
+
+
+    // =================================================
+    // COLISÃO COM OS TIJOLOS
+    // =================================================
+
+    for (const brick of bricks) {
+
+        if (!brick.alive) {
+            continue;
+        }
+
+        const collided =
+            ball.x + ball.radius > brick.x &&
+            ball.x - ball.radius < brick.x + brick.width &&
+            ball.y + ball.radius > brick.y &&
+            ball.y - ball.radius < brick.y + brick.height;
+
+        if (collided) {
+
+            // Identifica o lado da colisão.
+            const overlapLeft =
+                ball.x + ball.radius - brick.x;
+
+            const overlapRight =
+                brick.x + brick.width -
+                (ball.x - ball.radius);
+
+            const overlapTop =
+                ball.y + ball.radius - brick.y;
+
+            const overlapBottom =
+                brick.y + brick.height -
+                (ball.y - ball.radius);
+
+            const minOverlap = Math.min(
+                overlapLeft,
+                overlapRight,
+                overlapTop,
+                overlapBottom
+            );
+
+
+            // Rebate a bola.
+            if (
+                minOverlap === overlapLeft ||
+                minOverlap === overlapRight
+            ) {
+
+                ball.vx *= -1;
+
+            } else {
+
+                ball.vy *= -1;
+
+            }
+
+
+            // Diminui a vida do tijolo.
+            brick.hp--;
+
+
+            // Tijolo blindado muda de cor após o primeiro hit.
+            if (brick.armored && brick.hp === 1) {
+
+                brick.color = "#f97316";
+
+            }
+
+
+            // Destrói o tijolo quando a vida chega a zero.
+            if (brick.hp <= 0) {
+
+                brick.alive = false;
+
+                score += brick.points;
+
+                scoreEl.textContent = score;
+
+                destroyedBricks++;
+
+                saveBest();
+
+
+                // =================================================
+                // POWER-UP A CADA 8 TIJOLOS DESTRUÍDOS
+                // =================================================
+
+                if (destroyedBricks % 8 === 0) {
+
+                    spawnPickup(
+                        brick.x + brick.width / 2 - 10,
+                        brick.y
+                    );
+
+                }
+
+            }
+
+
+            // Evita atingir vários tijolos no mesmo frame.
+            break;
+
+        }
+
+    }
+
+
+    // =================================================
+    // FIM DO NÍVEL
+    // =================================================
+
+    if (bricks.every(brick => !brick.alive)) {
+
+        nextLevel();
+
+    }
+
 }
 
+
 // =====================================================
-// DESENHO DE CÉLULA
+// DESENHO DOS TIJOLOS
 // =====================================================
 
-function drawCell(x, y, color) {
+function drawBricks() {
 
-    ctx.fillStyle = color
+    bricks.forEach(brick => {
+
+        if (!brick.alive) {
+            return;
+        }
+
+        // Cor especial para o tijolo blindado.
+        ctx.fillStyle =
+            brick.armored && brick.hp === 2
+                ? "#f97316"
+                : colorByPoints(brick.points);
+
+        ctx.fillRect(
+            brick.x,
+            brick.y,
+            brick.width,
+            brick.height
+        );
+
+
+        // Contorno
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.35)";
+
+        ctx.strokeRect(
+            brick.x,
+            brick.y,
+            brick.width,
+            brick.height
+        );
+
+
+        // Mostra a vida do tijolo blindado.
+        if (brick.armored) {
+
+            ctx.fillStyle = "#fff7ed";
+
+            ctx.font = "bold 12px Segoe UI";
+
+            ctx.textAlign = "center";
+
+            ctx.fillText(
+                brick.hp,
+                brick.x + brick.width / 2,
+                brick.y + 14
+            );
+
+        }
+
+    });
+
+}
+
+
+// =====================================================
+// CORES DOS TIJOLOS
+// =====================================================
+
+function colorByPoints(points) {
+
+    if (points === 50) return "#f472b6";
+
+    if (points === 40) return "#c084fc";
+
+    if (points === 30) return "#818cf8";
+
+    if (points === 20) return "#38bdf8";
+
+    return "#22d3ee";
+
+}
+
+
+// =====================================================
+// DESENHO DO POWER-UP
+// =====================================================
+
+function drawPickup() {
+
+    if (pickup === null) {
+        return;
+    }
+
+    // Power-up verde.
+    ctx.fillStyle = "#4ade80";
+
+    ctx.shadowColor = "#4ade80";
+
+    ctx.shadowBlur = 12;
 
     ctx.fillRect(
-        x * CELL + 2,
-        y * CELL + 2,
-        CELL - 4,
-        CELL - 4
-    )
+        pickup.x,
+        pickup.y,
+        pickup.width,
+        pickup.height
+    );
+
+    ctx.shadowBlur = 0;
+
+
+    // Símbolo de aumento.
+    ctx.fillStyle = "#052e16";
+
+    ctx.font = "bold 16px Segoe UI";
+
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "+",
+        pickup.x + pickup.width / 2,
+        pickup.y + 15
+    );
+
 }
 
+
 // =====================================================
-// DESENHO
+// DESENHO DO JOGO
 // =====================================================
 
 function draw() {
 
     // Fundo
-    ctx.fillStyle = "#07111f"
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.fillStyle = "#07111f";
 
     ctx.fillRect(
         0,
         0,
         canvas.width,
         canvas.height
-    )
+    );
+
 
     // Grade
-    ctx.strokeStyle = "#102033"
+    ctx.strokeStyle = "#102033";
 
-    ctx.lineWidth = 1
+    ctx.lineWidth = 1;
 
     for (
         let x = 0;
         x <= canvas.width;
-        x += CELL
+        x += 24
     ) {
 
-        ctx.beginPath()
+        ctx.beginPath();
 
-        ctx.moveTo(x, 0)
+        ctx.moveTo(x, 0);
 
-        ctx.lineTo(
-            x,
-            canvas.height
-        )
+        ctx.lineTo(x, canvas.height);
 
-        ctx.stroke()
+        ctx.stroke();
+
     }
 
     for (
         let y = 0;
         y <= canvas.height;
-        y += CELL
+        y += 24
     ) {
 
-        ctx.beginPath()
+        ctx.beginPath();
 
-        ctx.moveTo(0, y)
+        ctx.moveTo(0, y);
 
-        ctx.lineTo(
-            canvas.width,
-            y
-        )
+        ctx.lineTo(canvas.width, y);
 
-        ctx.stroke()
+        ctx.stroke();
+
     }
 
-    // Obstáculos
-    getMap().obstacles.forEach(obstacle => {
 
-        drawCell(
-            obstacle.x,
-            obstacle.y,
-            "#a855f7"
-        )
-    })
+    // Tijolos
+    drawBricks();
 
-    // Comida
-    drawCell(
-        food.x,
-        food.y,
-        "#facc15"
-    )
 
-    // Cobra
-    snake.forEach((segment, index) => {
+    // Power-up
+    drawPickup();
 
-        drawCell(
-            segment.x,
-            segment.y,
-            index === 0
-                ? "#22d3ee"
-                : "#06b6d4"
-        )
-    })
 
-    // Tela de estado
+    // Raquete
+    ctx.fillStyle = paddleWide
+        ? "#4ade80"
+        : "#22d3ee";
+
+    ctx.shadowColor = ctx.fillStyle;
+
+    ctx.shadowBlur = 12;
+
+    ctx.fillRect(
+        paddle.x,
+        paddle.y,
+        paddle.width,
+        paddle.height
+    );
+
+    ctx.shadowBlur = 0;
+
+
+    // Bola
+    ctx.beginPath();
+
+    ctx.arc(
+        ball.x,
+        ball.y,
+        ball.radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = "#facc15";
+
+    ctx.shadowColor = "#facc15";
+
+    ctx.shadowBlur = 12;
+
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+
+    // =================================================
+    // TELA DE ESTADO
+    // =================================================
+
     if (state !== STATES.PLAYING) {
 
         ctx.fillStyle =
-            "rgba(3, 7, 18, 0.72)"
+            "rgba(3, 7, 18, 0.72)";
 
         ctx.fillRect(
             0,
             0,
             canvas.width,
             canvas.height
-        )
+        );
 
-        ctx.textAlign = "center"
+        ctx.textAlign = "center";
 
-        ctx.fillStyle = "#ffffff"
+        ctx.fillStyle = "#ffffff";
 
-        ctx.font =
-            "bold 28px Segoe UI"
+        ctx.font = "bold 27px Segoe UI";
 
         ctx.fillText(
             state,
             canvas.width / 2,
             canvas.height / 2
-        )
+        );
 
-        ctx.font =
-            "16px Segoe UI"
+        ctx.font = "16px Segoe UI";
 
-        let message
+        let message =
+            "Pressione ESPAÇO para jogar";
+
+        if (state === STATES.PAUSED) {
+
+            message =
+                "Pressione ESPAÇO para continuar";
+
+        }
 
         if (state === STATES.OVER) {
 
             message =
-                "Pressione R para reiniciar"
+                "Pressione R para reiniciar";
 
-        } else {
+        }
+
+        if (state === STATES.WIN) {
 
             message =
-                "Pressione ESPAÇO para jogar"
+                "Pressione R para reiniciar";
+
         }
 
         ctx.fillText(
             message,
             canvas.width / 2,
-            canvas.height / 2 + 32
-        )
-    }
-}
+            canvas.height / 2 + 34
+        );
 
-// =====================================================
-// LOOP
-// =====================================================
-
-function loop(ts) {
-
-    const dt = ts - last
-
-    last = ts
-
-    if (state === STATES.PLAYING) {
-
-        acc += dt
-
-        while (
-            acc >= getMap().speed
-        ) {
-
-            tick()
-
-            acc -= getMap().speed
-        }
     }
 
-    draw()
-
-    requestAnimationFrame(loop)
 }
+
+
+// =====================================================
+// LOOP PRINCIPAL
+// =====================================================
+
+function loop() {
+
+    update();
+
+    draw();
+
+    requestAnimationFrame(loop);
+
+}
+
 
 // =====================================================
 // INICIAR
 // =====================================================
 
-reset()
+resetGame();
 
-requestAnimationFrame(loop)
+bestEl.textContent = best;
+
+requestAnimationFrame(loop);

@@ -1,19 +1,15 @@
 body {
     margin: 0;
     padding: 20px;
-
     background: #030712;
     color: #e5e7eb;
-
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     text-align: center;
 }
 
 h1 {
     margin-bottom: 8px;
-
     color: #22d3ee;
-
     letter-spacing: 3px;
 }
 
@@ -24,10 +20,9 @@ p {
 .HUD {
     display: flex;
     justify-content: center;
-    gap: 24px;
-
+    flex-wrap: wrap;
+    gap: 20px;
     margin: 18px 0;
-
     font-size: 16px;
 }
 
@@ -37,17 +32,12 @@ p {
 
 canvas {
     display: block;
-
-    width: 384px;
-    height: 384px;
-
+    width: min(480px, 95vw);
+    height: auto;
     margin: 16px auto;
-
     background-color: #07111f;
-
     border: 3px solid #22d3ee;
     border-radius: 8px;
-
     box-shadow: 0 0 20px rgba(34, 211, 238, 0.2);
 }
 

@@ -4,31 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="style.css">
-    <title>Neon Snake</title>
+    <title>Neon Breakout</title>
 </head>
 <body>
-
-    <h1>NEON SNAKE</h1>
-
-    <p>Setas/WASD para mover. Espaço: Pausa. R: Reiniciar. 1/2: Trocar mapa.</p>
+    <h1>NEON BREAKOUT</h1>
+    <p>Setas/A-D para mover. Espaço: iniciar/pausar. R: reiniciar.</p>
 
     <div class="HUD">
         <span>Pontos: <strong id="score">0</strong></span>
-        <span>Recorde: <strong id="snake-best">0</strong></span>
-        <span>Mapa: <strong id="map">1</strong></span>
+        <span>Recorde: <strong id="best">0</strong></span>
+        <span>Nível: <strong id="level">1</strong></span>
         <span>Estado: <strong id="state">PRONTO</strong></span>
     </div>
 
-    <canvas
-        id="game"
-        width="384"
-        height="384"
-        aria-label="Área do jogo da cobra">
-    </canvas>
+    <canvas id="game" width="480" height="560"
+        aria-label="Área do jogo Neon Breakout"></canvas>
 
-    <p class="hint">
-        Coma as maçãs. Evite as paredes, seu próprio corpo e os obstáculos.
-    </p>
+    <p class="hint">Destrua todos os tijolos. Não deixe a bola cair!</p>
 
     <script src="script.js"></script>
 </body>
