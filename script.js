@@ -1,844 +1,594 @@
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const scoreEl = document.getElementById("score");
-const bestEl = document.getElementById("best");
-const levelEl = document.getElementById("level");
-const stateEl = document.getElementById("state");
+const livesEl = document.getElementById("lives");
+const waveEl = document.getElementById("wave");
 
-const STATES = {
-    READY: "PRONTO",
-    PLAYING: "JOGANDO",
-    PAUSED: "PAUSADO",
-    OVER: "GAME OVER",
-    WIN: "NÍVEL CONCLUÍDO"
-};
+const KEYS = {};
 
+// =====================================
+// CONTROLES
+// =====================================
 
-// =====================================================
-// RAQUETE
-// =====================================================
+window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
 
-const paddle = {
-    width: 90,
-    originalWidth: 90,
-    minWidth: 48,
-    height: 12,
-    x: canvas.width / 2 - 45,
-    y: canvas.height - 34,
-    speed: 7
-};
+    if ([" ", "arrowleft", "arrowright"].includes(key)) {
+        e.preventDefault();
+    }
 
+    // Evita repetir comandos enquanto a tecla está pressionada
+    if (e.repeat) return;
 
-// =====================================================
-// BOLA
-// =====================================================
+    if (key === "p" && !gameOver) {
+        pause = !pause;
 
-const ball = {
-    x: canvas.width / 2,
-    y: paddle.y - 10,
-    radius: 7,
-    vx: 3.2,
-    vy: -4.2,
-    speed: 5.3
-};
+        // Evita um dt enorme depois de despausar
+        last = performance.now();
+    }
 
+    if (key === "r" && gameOver) {
+        startGame();
+    }
 
-// =====================================================
-// VARIÁVEIS
-// =====================================================
+    KEYS[key] = true;
+});
 
-let score = 0;
-let best = Number(localStorage.getItem("neon-breakout-best")) || 0;
-let level = 1;
+window.addEventListener("keyup", (e) => {
+    KEYS[e.key.toLowerCase()] = false;
+});
 
-let state = STATES.READY;
+// =====================================
+// COLISÃO AABB
+// =====================================
 
-let rightPressed = false;
-let leftPressed = false;
+function aabb(a, b) {
+    return (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+    );
+}
 
-let bricks = [];
+// =====================================
+// CLASSE PLAYER
+// =====================================
 
-let destroyedBricks = 0;
+class Player {
+    constructor() {
+        this.w = 36;
+        this.h = 36;
 
-// Power-up
-let pickup = null;
+        this.x = canvas.width / 2 - this.w / 2;
+        this.y = canvas.height - 65;
 
-// Efeito da raquete
-let paddleWide = false;
-let paddleWideUntil = 0;
+        this.speed = 280;
+        this.cooldown = 0;
+    }
 
+    update(dt) {
 
-// =====================================================
-// LAYOUT AUTORAL DOS TIJOLOS
-// =====================================================
-
-function createBricks() {
-
-    bricks = [];
-
-    /*
-    Layout autoral em forma de pirâmide com um corredor central.
-
-    O jogador arrisca a bola no topo porque precisa direcioná-la
-    por espaços menores e rebater em ângulos mais difíceis.
-
-    As fileiras superiores valem mais pontos, criando uma relação
-    de risco e recompensa.
-    */
-
-    const rows = [
-        {
-            y: 70,
-            xPositions: [150, 190, 230, 270],
-            points: 50
-        },
-        {
-            y: 105,
-            xPositions: [110, 150, 190, 230, 270, 310],
-            points: 40
-        },
-        {
-            y: 140,
-            xPositions: [70, 110, 150, 190, 230, 270, 310, 350],
-            points: 30
-        },
-        {
-            y: 175,
-            xPositions: [70, 110, 150, 230, 270, 310, 350],
-            points: 20
-        },
-        {
-            y: 210,
-            xPositions: [110, 150, 190, 230, 270, 310],
-            points: 10
+        if (KEYS["arrowleft"] || KEYS["a"]) {
+            this.x -= this.speed * dt;
         }
-    ];
 
-    rows.forEach((row, rowIndex) => {
+        if (KEYS["arrowright"] || KEYS["d"]) {
+            this.x += this.speed * dt;
+        }
 
-        row.xPositions.forEach((x, index) => {
+        // Impede a nave de sair da tela
+        this.x = Math.max(
+            0,
+            Math.min(canvas.width - this.w, this.x)
+        );
 
-            // Tijolo blindado: precisa de dois impactos.
-            const armored =
-                rowIndex === 2 && index === 3;
+        // Controle do intervalo entre tiros
+        this.cooldown -= dt;
 
-            bricks.push({
-                x: x,
-                y: row.y,
-                width: 34,
-                height: 20,
-                points: row.points,
-                alive: true,
-                hp: armored ? 2 : 1,
-                armored: armored
-            });
+        if (KEYS[" "] && this.cooldown <= 0) {
+            bullets.push(
+                new Bullet(this.x + this.w / 2 - 3, this.y)
+            );
+
+            this.cooldown = 0.22;
+        }
+    }
+
+    draw() {
+        ctx.save();
+
+        // Brilho da nave
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 15;
+
+        // Corpo da nave
+        ctx.fillStyle = "#38bdf8";
+
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.w / 2, this.y);
+        ctx.lineTo(this.x + this.w, this.y + this.h * 0.8);
+        ctx.lineTo(this.x + this.w * 0.7, this.y + this.h);
+        ctx.lineTo(this.x + this.w * 0.3, this.y + this.h);
+        ctx.lineTo(this.x, this.y + this.h * 0.8);
+        ctx.closePath();
+
+        ctx.fill();
+
+        // Cabine
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#e0f2fe";
+
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.w / 2, this.y + 8);
+        ctx.lineTo(this.x + this.w * 0.68, this.y + 24);
+        ctx.lineTo(this.x + this.w * 0.32, this.y + 24);
+        ctx.closePath();
+
+        ctx.fill();
+
+        // Motores
+        ctx.fillStyle = "#f97316";
+        ctx.fillRect(this.x + 6, this.y + 29, 5, 7);
+        ctx.fillRect(this.x + 25, this.y + 29, 5, 7);
+
+        ctx.restore();
+    }
+}
+
+// =====================================
+// CLASSE BULLET
+// =====================================
+
+class Bullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+
+        this.w = 6;
+        this.h = 14;
+
+        this.speed = 420;
+        this.dead = false;
+    }
+
+    update(dt) {
+        this.y -= this.speed * dt;
+
+        if (this.y + this.h < 0) {
+            this.dead = true;
+        }
+    }
+
+    draw() {
+        ctx.save();
+
+        ctx.shadowColor = "#facc15";
+        ctx.shadowBlur = 12;
+
+        ctx.fillStyle = "#facc15";
+
+        ctx.fillRect(
+            this.x,
+            this.y,
+            this.w,
+            this.h
+        );
+
+        ctx.restore();
+    }
+}
+
+// =====================================
+// CLASSE ENEMY
+// =====================================
+
+class Enemy {
+    constructor(x, y, speed) {
+        this.x = x;
+        this.y = y;
+
+        this.w = 30;
+        this.h = 30;
+
+        this.speed = speed;
+        this.dead = false;
+    }
+
+    update(dt) {
+        this.y += this.speed * dt;
+    }
+
+    draw() {
+        ctx.save();
+
+        ctx.shadowColor = "#ef4444";
+        ctx.shadowBlur = 12;
+
+        // Corpo do inimigo
+        ctx.fillStyle = "#ef4444";
+
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.w / 2, this.y);
+        ctx.lineTo(this.x + this.w, this.y + this.h / 2);
+        ctx.lineTo(this.x + this.w / 2, this.y + this.h);
+        ctx.lineTo(this.x, this.y + this.h / 2);
+        ctx.closePath();
+
+        ctx.fill();
+
+        // Detalhes internos
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#fecaca";
+
+        ctx.fillRect(
+            this.x + 10,
+            this.y + 10,
+            10,
+            10
+        );
+
+        ctx.restore();
+    }
+}
+
+// =====================================
+// SISTEMA DE PARTÍCULAS (VFX)
+// =====================================
+
+class Particle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+
+        // Velocidade aleatória em todas as direções
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 50 + Math.random() * 150;
+
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+
+        this.life = 0.45 + Math.random() * 0.35;
+        this.maxLife = this.life;
+
+        this.size = 2 + Math.random() * 3;
+    }
+
+    update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        this.life -= dt;
+    }
+
+    draw() {
+        ctx.save();
+
+        ctx.globalAlpha = Math.max(
+            0,
+            this.life / this.maxLife
+        );
+
+        ctx.fillStyle = "#facc15";
+
+        ctx.shadowColor = "#f97316";
+        ctx.shadowBlur = 10;
+
+        ctx.fillRect(
+            this.x,
+            this.y,
+            this.size,
+            this.size
+        );
+
+        ctx.restore();
+    }
+}
+
+// =====================================
+// EXPLOSÃO DOS INIMIGOS
+// =====================================
+
+function createExplosion(x, y) {
+
+    // Cria um burst de 10 faíscas
+    for (let i = 0; i < 10; i++) {
+        particles.push(
+            new Particle(x, y)
+        );
+    }
+}
+
+// =====================================
+// VARIÁVEIS DO JOGO
+// =====================================
+
+let player;
+let bullets;
+let enemies;
+let particles;
+
+let score;
+let lives;
+let waves;
+
+let last;
+let gameOver;
+let pause;
+
+let spawnTimer;
+let spawnedEnemies;
+
+// =====================================
+// INICIAR JOGO
+// =====================================
+
+function startGame() {
+
+    player = new Player();
+
+    bullets = [];
+    enemies = [];
+    particles = [];
+
+    score = 0;
+    lives = 3;
+    waves = 1;
+
+    spawnTimer = 0;
+    spawnedEnemies = 0;
+
+    pause = false;
+    gameOver = false;
+
+    last = performance.now();
+
+    syncHud();
+}
+
+// =====================================
+// ATUALIZAR JOGO
+// =====================================
+
+function update(dt) {
+
+    if (pause || gameOver) return;
+
+    player.update(dt);
+
+    // Atualiza tiros
+    bullets.forEach((b) => b.update(dt));
+
+    // Atualiza inimigos
+    enemies.forEach((e) => e.update(dt));
+
+    // Atualiza partículas
+    particles.forEach((p) => p.update(dt));
+
+    // Gera inimigos
+    spawnWave(dt);
+
+    // =================================
+    // COLISÃO ENTRE TIROS E INIMIGOS
+    // =================================
+
+    bullets.forEach((b) => {
+
+        enemies.forEach((e) => {
+
+            if (
+                !b.dead &&
+                !e.dead &&
+                aabb(b, e)
+            ) {
+
+                b.dead = true;
+                e.dead = true;
+
+                score += 15;
+
+                // Efeito visual da morte
+                createExplosion(
+                    e.x + e.w / 2,
+                    e.y + e.h / 2
+                );
+            }
 
         });
 
     });
 
-}
-
-
-// =====================================================
-// ESTADO DO JOGO
-// =====================================================
-
-function updateState(newState) {
-
-    state = newState;
-
-    stateEl.textContent = state;
-
-}
-
-
-// =====================================================
-// RESET / INÍCIO
-// =====================================================
-
-function resetGame() {
-
-    score = 0;
-    level = 1;
-
-    destroyedBricks = 0;
-
-    paddle.width = paddle.originalWidth;
-
-    paddleWide = false;
-    paddleWideUntil = 0;
-
-    pickup = null;
-
-    paddle.x =
-        canvas.width / 2 - paddle.width / 2;
-
-    resetBall();
-
-    createBricks();
-
-    scoreEl.textContent = score;
-    levelEl.textContent = level;
-
-    updateState(STATES.READY);
-
-}
-
-
-function resetBall() {
-
-    ball.x =
-        paddle.x + paddle.width / 2;
-
-    ball.y =
-        paddle.y - ball.radius - 1;
-
-    ball.vx = 3.2;
-    ball.vy = -4.2;
-
-    ball.speed = 5.3;
-
-}
-
-
-// =====================================================
-// CONTROLES
-// =====================================================
-
-window.addEventListener("keydown", (e) => {
-
-    const key = e.key.toLowerCase();
-
-    if (
-        ["arrowleft", "arrowright", " "].includes(key)
-    ) {
-        e.preventDefault();
-    }
-
-    if (key === "arrowright" || key === "d") {
-        rightPressed = true;
-    }
-
-    if (key === "arrowleft" || key === "a") {
-        leftPressed = true;
-    }
-
-    // Iniciar e pausar
-    if (
-        key === " " &&
-        (
-            state === STATES.READY ||
-            state === STATES.PAUSED
-        )
-    ) {
-
-        updateState(STATES.PLAYING);
-
-    } else if (
-        key === " " &&
-        state === STATES.PLAYING
-    ) {
-
-        updateState(STATES.PAUSED);
-
-    }
-
-    // Reiniciar
-    if (key === "r") {
-        resetGame();
-    }
-
-});
-
-
-window.addEventListener("keyup", (e) => {
-
-    const key = e.key.toLowerCase();
-
-    if (key === "arrowright" || key === "d") {
-        rightPressed = false;
-    }
-
-    if (key === "arrowleft" || key === "a") {
-        leftPressed = false;
-    }
-
-});
-
-
-// =====================================================
-// CURVA DE DIFICULDADE
-// =====================================================
-
-function nextLevel() {
-
-    level++;
-
-    // A raquete encolhe 8 px a cada nível concluído.
-    // Ela nunca fica menor que 48 px.
-    paddle.width = Math.max(
-        paddle.minWidth,
-        paddle.originalWidth - ((level - 1) * 8)
-    );
-
-    paddle.x =
-        canvas.width / 2 - paddle.width / 2;
-
-    destroyedBricks = 0;
-
-    pickup = null;
-
-    paddleWide = false;
-    paddleWideUntil = 0;
-
-    // Aumenta levemente a velocidade da bola a cada nível.
-    ball.speed = Math.min(
-        7,
-        5.3 + ((level - 1) * 0.25)
-    );
-
-    resetBall();
-
-    createBricks();
-
-    levelEl.textContent = level;
-
-    updateState(STATES.READY);
-
-}
-
-
-// =====================================================
-// POWER-UP
-// =====================================================
-
-function spawnPickup(x, y) {
-
-    // Só existe um power-up caindo por vez.
-    if (pickup !== null) {
-        return;
-    }
-
-    pickup = {
-        x: x,
-        y: y,
-        width: 20,
-        height: 20,
-        speed: 2.5
-    };
-
-}
-
-
-// =====================================================
-// PEGAR POWER-UP
-// =====================================================
-
-function collectPickup() {
-
-    // Aumenta a raquete temporariamente.
-    paddleWide = true;
-
-    // Efeito dura 8 segundos.
-    paddleWideUntil = Date.now() + 8000;
-
-    // Aumenta a raquete em 40 px.
-    paddle.width = Math.min(
-        paddle.originalWidth + 40,
-        130
-    );
-
-    // Impede a raquete de sair da tela.
-    paddle.x = Math.max(
-        0,
-        Math.min(
-            canvas.width - paddle.width,
-            paddle.x
-        )
-    );
-
-    pickup = null;
-
-}
-
-
-// =====================================================
-// RECORDES
-// =====================================================
-
-function saveBest() {
-
-    if (score > best) {
-
-        best = score;
-
-        localStorage.setItem(
-            "neon-breakout-best",
-            String(best)
-        );
-
-        bestEl.textContent = best;
-
-    }
-
-}
-
-
-// =====================================================
-// ATUALIZAÇÃO DO JOGO
-// =====================================================
-
-function update() {
-
-    // Movimento da raquete
-    if (rightPressed) {
-        paddle.x += paddle.speed;
-    }
-
-    if (leftPressed) {
-        paddle.x -= paddle.speed;
-    }
-
-    // Impede a raquete de sair da tela
-    paddle.x = Math.max(
-        0,
-        Math.min(
-            canvas.width - paddle.width,
-            paddle.x
-        )
-    );
-
-
-    // =================================================
-    // POWER-UP: TEMPO DO EFEITO
-    // =================================================
-
-    if (
-        paddleWide &&
-        Date.now() >= paddleWideUntil
-    ) {
-
-        paddleWide = false;
-
-        paddle.width = Math.max(
-            paddle.minWidth,
-            paddle.originalWidth - ((level - 1) * 8)
-        );
-
-        paddle.x = Math.max(
-            0,
-            Math.min(
-                canvas.width - paddle.width,
-                paddle.x
-            )
-        );
-
-    }
-
-
-    // =================================================
-    // POWER-UP: MOVIMENTO DO ITEM
-    // =================================================
-
-    if (pickup !== null && state === STATES.PLAYING) {
-
-        pickup.y += pickup.speed;
-
-        // Colisão do item com a raquete
-        const caught =
-            pickup.y + pickup.height >= paddle.y &&
-            pickup.y <= paddle.y + paddle.height &&
-            pickup.x + pickup.width >= paddle.x &&
-            pickup.x <= paddle.x + paddle.width;
-
-        if (caught) {
-
-            collectPickup();
-
-        } else if (
-            pickup.y > canvas.height
+    // =================================
+    // COLISÃO COM O JOGADOR
+    // =================================
+
+    enemies.forEach((e) => {
+
+        if (
+            !e.dead &&
+            aabb(e, player)
         ) {
 
-            // Item caiu sem ser pego
-            pickup = null;
+            e.dead = true;
 
-        }
+            lives -= 1;
 
-    }
-
-
-    // =================================================
-    // BOLA PARADA ANTES DO JOGO
-    // =================================================
-
-    if (state !== STATES.PLAYING) {
-
-        if (state === STATES.READY) {
-
-            ball.x =
-                paddle.x + paddle.width / 2;
-
-            ball.y =
-                paddle.y - ball.radius - 1;
-
-        }
-
-        return;
-
-    }
-
-
-    // =================================================
-    // MOVIMENTO DA BOLA
-    // =================================================
-
-    ball.x += ball.vx;
-    ball.y += ball.vy;
-
-
-    // =================================================
-    // COLISÃO COM AS PAREDES
-    // =================================================
-
-    // Parede esquerda
-    if (ball.x - ball.radius <= 0) {
-
-        ball.x = ball.radius;
-
-        ball.vx = Math.abs(ball.vx);
-
-    }
-
-    // Parede direita
-    if (ball.x + ball.radius >= canvas.width) {
-
-        ball.x = canvas.width - ball.radius;
-
-        ball.vx = -Math.abs(ball.vx);
-
-    }
-
-    // Teto
-    if (ball.y - ball.radius <= 0) {
-
-        ball.y = ball.radius;
-
-        ball.vy = Math.abs(ball.vy);
-
-    }
-
-
-    // =================================================
-    // QUIQUE NA RAQUETE
-    // =================================================
-
-    const hitPaddle =
-        ball.vy > 0 &&
-        ball.y + ball.radius >= paddle.y &&
-        ball.y - ball.radius <= paddle.y + paddle.height &&
-        ball.x >= paddle.x &&
-        ball.x <= paddle.x + paddle.width;
-
-    if (hitPaddle) {
-
-        // Posiciona a bola acima da raquete.
-        ball.y = paddle.y - ball.radius;
-
-        // Calcula o ponto de contato.
-        const hitPosition =
-            (
-                ball.x -
-                (paddle.x + paddle.width / 2)
-            ) /
-            (paddle.width / 2);
-
-        // Ângulo de até 60 graus nas pontas.
-        const angle =
-            hitPosition * (Math.PI / 3);
-
-        // Aumenta a velocidade levemente.
-        ball.speed = Math.min(
-            7,
-            Math.hypot(ball.vx, ball.vy) + 0.08
-        );
-
-        ball.vx =
-            ball.speed * Math.sin(angle);
-
-        // Garante que a bola suba após o quique.
-        ball.vy =
-            -Math.abs(
-                ball.speed * Math.cos(angle)
+            createExplosion(
+                e.x + e.w / 2,
+                e.y + e.h / 2
             );
 
-    }
-
-
-    // =================================================
-    // PERDEU A BOLA
-    // =================================================
-
-    if (ball.y - ball.radius > canvas.height) {
-
-        updateState(STATES.OVER);
-
-        saveBest();
-
-        return;
-
-    }
-
-
-    // =================================================
-    // COLISÃO COM OS TIJOLOS
-    // =================================================
-
-    for (const brick of bricks) {
-
-        if (!brick.alive) {
-            continue;
-        }
-
-        const collided =
-            ball.x + ball.radius > brick.x &&
-            ball.x - ball.radius < brick.x + brick.width &&
-            ball.y + ball.radius > brick.y &&
-            ball.y - ball.radius < brick.y + brick.height;
-
-        if (collided) {
-
-            // Identifica o lado da colisão.
-            const overlapLeft =
-                ball.x + ball.radius - brick.x;
-
-            const overlapRight =
-                brick.x + brick.width -
-                (ball.x - ball.radius);
-
-            const overlapTop =
-                ball.y + ball.radius - brick.y;
-
-            const overlapBottom =
-                brick.y + brick.height -
-                (ball.y - ball.radius);
-
-            const minOverlap = Math.min(
-                overlapLeft,
-                overlapRight,
-                overlapTop,
-                overlapBottom
-            );
-
-
-            // Rebate a bola.
-            if (
-                minOverlap === overlapLeft ||
-                minOverlap === overlapRight
-            ) {
-
-                ball.vx *= -1;
-
-            } else {
-
-                ball.vy *= -1;
-
+            if (lives <= 0) {
+                lives = 0;
+                gameOver = true;
             }
-
-
-            // Diminui a vida do tijolo.
-            brick.hp--;
-
-
-            // Tijolo blindado muda de cor após o primeiro hit.
-            if (brick.armored && brick.hp === 1) {
-
-                brick.color = "#f97316";
-
-            }
-
-
-            // Destrói o tijolo quando a vida chega a zero.
-            if (brick.hp <= 0) {
-
-                brick.alive = false;
-
-                score += brick.points;
-
-                scoreEl.textContent = score;
-
-                destroyedBricks++;
-
-                saveBest();
-
-
-                // =================================================
-                // POWER-UP A CADA 8 TIJOLOS DESTRUÍDOS
-                // =================================================
-
-                if (destroyedBricks % 8 === 0) {
-
-                    spawnPickup(
-                        brick.x + brick.width / 2 - 10,
-                        brick.y
-                    );
-
-                }
-
-            }
-
-
-            // Evita atingir vários tijolos no mesmo frame.
-            break;
-
-        }
-
-    }
-
-
-    // =================================================
-    // FIM DO NÍVEL
-    // =================================================
-
-    if (bricks.every(brick => !brick.alive)) {
-
-        nextLevel();
-
-    }
-
-}
-
-
-// =====================================================
-// DESENHO DOS TIJOLOS
-// =====================================================
-
-function drawBricks() {
-
-    bricks.forEach(brick => {
-
-        if (!brick.alive) {
-            return;
-        }
-
-        // Cor especial para o tijolo blindado.
-        ctx.fillStyle =
-            brick.armored && brick.hp === 2
-                ? "#f97316"
-                : colorByPoints(brick.points);
-
-        ctx.fillRect(
-            brick.x,
-            brick.y,
-            brick.width,
-            brick.height
-        );
-
-
-        // Contorno
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.35)";
-
-        ctx.strokeRect(
-            brick.x,
-            brick.y,
-            brick.width,
-            brick.height
-        );
-
-
-        // Mostra a vida do tijolo blindado.
-        if (brick.armored) {
-
-            ctx.fillStyle = "#fff7ed";
-
-            ctx.font = "bold 12px Segoe UI";
-
-            ctx.textAlign = "center";
-
-            ctx.fillText(
-                brick.hp,
-                brick.x + brick.width / 2,
-                brick.y + 14
-            );
-
         }
 
     });
 
-}
+    // =================================
+    // INIMIGOS QUE ESCAPAM PELA BASE
+    // =================================
 
+    enemies.forEach((e) => {
 
-// =====================================================
-// CORES DOS TIJOLOS
-// =====================================================
+        if (
+            !e.dead &&
+            e.y > canvas.height
+        ) {
 
-function colorByPoints(points) {
+            e.dead = true;
 
-    if (points === 50) return "#f472b6";
+            // Cada inimigo que escapa tira 1 vida
+            lives -= 1;
 
-    if (points === 40) return "#c084fc";
+            if (lives <= 0) {
+                lives = 0;
+                gameOver = true;
+            }
+        }
 
-    if (points === 30) return "#818cf8";
+    });
 
-    if (points === 20) return "#38bdf8";
+    // =================================
+    // REMOVER ELEMENTOS MORTOS
+    // =================================
 
-    return "#22d3ee";
+    enemies = enemies.filter((e) => !e.dead);
 
-}
+    bullets = bullets.filter((b) => !b.dead);
 
+    particles = particles.filter((p) => p.life > 0);
 
-// =====================================================
-// DESENHO DO POWER-UP
-// =====================================================
+    // =================================
+    // PROGRESSÃO DAS ONDAS
+    // =================================
 
-function drawPickup() {
+    if (
+        spawnedEnemies >= 6 + (waves - 1) * 2 &&
+        enemies.length === 0
+    ) {
 
-    if (pickup === null) {
-        return;
+        waves += 1;
+        spawnedEnemies = 0;
+        spawnTimer = 0.5;
     }
 
-    // Power-up verde.
-    ctx.fillStyle = "#4ade80";
+    syncHud();
+}
 
-    ctx.shadowColor = "#4ade80";
+// =====================================
+// HUD
+// =====================================
 
-    ctx.shadowBlur = 12;
+function syncHud() {
 
-    ctx.fillRect(
-        pickup.x,
-        pickup.y,
-        pickup.width,
-        pickup.height
-    );
-
-    ctx.shadowBlur = 0;
-
-
-    // Símbolo de aumento.
-    ctx.fillStyle = "#052e16";
-
-    ctx.font = "bold 16px Segoe UI";
-
-    ctx.textAlign = "center";
-
-    ctx.fillText(
-        "+",
-        pickup.x + pickup.width / 2,
-        pickup.y + 15
-    );
+    scoreEl.textContent = score;
+    livesEl.textContent = lives;
+    waveEl.textContent = waves;
 
 }
 
+// =====================================
+// SISTEMA DE ONDAS
+// =====================================
 
-// =====================================================
-// DESENHO DO JOGO
-// =====================================================
+function spawnWave(dt) {
+
+    // Os três eixos de balanceamento:
+    //
+    // QUANTIDADE:
+    // Começa com 6 inimigos e aumenta 2 por onda.
+    //
+    // VELOCIDADE:
+    // Começa em 70 pixels/s e aumenta 10 por onda.
+    //
+    // INTERVALO:
+    // Começa em 0.85 segundo e diminui 0.05 por onda,
+    // até o limite mínimo de 0.35 segundo.
+    //
+    // Assim, as ondas ficam progressivamente mais difíceis,
+    // aumentando a pressão sem sobrecarregar o início do jogo.
+
+    const quantity = 6 + (waves - 1) * 2;
+
+    const speed = 70 + (waves - 1) * 10;
+
+    const interval = Math.max(
+        0.35,
+        0.85 - (waves - 1) * 0.05
+    );
+
+    spawnTimer -= dt;
+
+    if (
+        spawnTimer <= 0 &&
+        spawnedEnemies < quantity
+    ) {
+
+        const x = Math.random() * (canvas.width - 30);
+
+        enemies.push(
+            new Enemy(x, -35, speed)
+        );
+
+        spawnedEnemies++;
+
+        spawnTimer = interval;
+    }
+}
+
+// =====================================
+// FUNDO ESTRELADO
+// =====================================
+
+function drawBackground() {
+
+    const gradient = ctx.createRadialGradient(
+        canvas.width / 2,
+        canvas.height / 2,
+        20,
+        canvas.width / 2,
+        canvas.height / 2,
+        canvas.height
+    );
+
+    gradient.addColorStop(0, "#0b1935");
+    gradient.addColorStop(1, "#020617");
+
+    ctx.fillStyle = gradient;
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    // Estrelas
+    ctx.fillStyle = "#94a3b8";
+
+    for (let i = 0; i < 40; i++) {
+
+        const x = (i * 97) % canvas.width;
+        const y = (i * 53) % canvas.height;
+
+        ctx.globalAlpha = 0.5;
+
+        ctx.fillRect(x, y, 2, 2);
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+// =====================================
+// DESENHAR JOGO
+// =====================================
 
 function draw() {
 
-    // Fundo
     ctx.clearRect(
         0,
         0,
@@ -846,7 +596,38 @@ function draw() {
         canvas.height
     );
 
-    ctx.fillStyle = "#07111f";
+    drawBackground();
+
+    player.draw();
+
+    enemies.forEach((e) => e.draw());
+
+    bullets.forEach((b) => b.draw());
+
+    particles.forEach((p) => p.draw());
+
+    if (pause) {
+        drawOverlay(
+            "PAUSADO",
+            "Pressione P para continuar"
+        );
+    }
+
+    if (gameOver) {
+        drawOverlay(
+            "GAME OVER",
+            "Pressione R para reiniciar"
+        );
+    }
+}
+
+// =====================================
+// OVERLAY
+// =====================================
+
+function drawOverlay(title, subtitle) {
+
+    ctx.fillStyle = "rgba(2, 6, 23, 0.8)";
 
     ctx.fillRect(
         0,
@@ -855,180 +636,53 @@ function draw() {
         canvas.height
     );
 
+    ctx.textAlign = "center";
 
-    // Grade
-    ctx.strokeStyle = "#102033";
+    ctx.fillStyle = "#38bdf8";
+    ctx.font = "bold 36px Segoe UI";
 
-    ctx.lineWidth = 1;
-
-    for (
-        let x = 0;
-        x <= canvas.width;
-        x += 24
-    ) {
-
-        ctx.beginPath();
-
-        ctx.moveTo(x, 0);
-
-        ctx.lineTo(x, canvas.height);
-
-        ctx.stroke();
-
-    }
-
-    for (
-        let y = 0;
-        y <= canvas.height;
-        y += 24
-    ) {
-
-        ctx.beginPath();
-
-        ctx.moveTo(0, y);
-
-        ctx.lineTo(canvas.width, y);
-
-        ctx.stroke();
-
-    }
-
-
-    // Tijolos
-    drawBricks();
-
-
-    // Power-up
-    drawPickup();
-
-
-    // Raquete
-    ctx.fillStyle = paddleWide
-        ? "#4ade80"
-        : "#22d3ee";
-
-    ctx.shadowColor = ctx.fillStyle;
-
-    ctx.shadowBlur = 12;
-
-    ctx.fillRect(
-        paddle.x,
-        paddle.y,
-        paddle.width,
-        paddle.height
+    ctx.fillText(
+        title,
+        canvas.width / 2,
+        canvas.height / 2 - 15
     );
 
-    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "16px Segoe UI";
 
-
-    // Bola
-    ctx.beginPath();
-
-    ctx.arc(
-        ball.x,
-        ball.y,
-        ball.radius,
-        0,
-        Math.PI * 2
+    ctx.fillText(
+        subtitle,
+        canvas.width / 2,
+        canvas.height / 2 + 25
     );
-
-    ctx.fillStyle = "#facc15";
-
-    ctx.shadowColor = "#facc15";
-
-    ctx.shadowBlur = 12;
-
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-
-
-    // =================================================
-    // TELA DE ESTADO
-    // =================================================
-
-    if (state !== STATES.PLAYING) {
-
-        ctx.fillStyle =
-            "rgba(3, 7, 18, 0.72)";
-
-        ctx.fillRect(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-        );
-
-        ctx.textAlign = "center";
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.font = "bold 27px Segoe UI";
-
-        ctx.fillText(
-            state,
-            canvas.width / 2,
-            canvas.height / 2
-        );
-
-        ctx.font = "16px Segoe UI";
-
-        let message =
-            "Pressione ESPAÇO para jogar";
-
-        if (state === STATES.PAUSED) {
-
-            message =
-                "Pressione ESPAÇO para continuar";
-
-        }
-
-        if (state === STATES.OVER) {
-
-            message =
-                "Pressione R para reiniciar";
-
-        }
-
-        if (state === STATES.WIN) {
-
-            message =
-                "Pressione R para reiniciar";
-
-        }
-
-        ctx.fillText(
-            message,
-            canvas.width / 2,
-            canvas.height / 2 + 34
-        );
-
-    }
 
 }
 
-
-// =====================================================
+// =====================================
 // LOOP PRINCIPAL
-// =====================================================
+// =====================================
 
-function loop() {
+function loop(timestamp) {
 
-    update();
+    let dt = (timestamp - last) / 1000;
+
+    last = timestamp;
+
+    // Limita o dt para evitar saltos grandes
+    // quando o navegador fica lento.
+    dt = Math.min(dt, 0.033);
+
+    update(dt);
 
     draw();
 
     requestAnimationFrame(loop);
-
 }
 
+// =====================================
+// EXECUÇÃO
+// =====================================
 
-// =====================================================
-// INICIAR
-// =====================================================
-
-resetGame();
-
-bestEl.textContent = best;
+startGame();
 
 requestAnimationFrame(loop);

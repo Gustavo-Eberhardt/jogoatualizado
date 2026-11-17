@@ -1,27 +1,37 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artilheiro Defender</title>
     <link rel="stylesheet" href="style.css">
-    <title>Neon Breakout</title>
 </head>
 <body>
-    <h1>NEON BREAKOUT</h1>
-    <p>Setas/A-D para mover. Espaço: iniciar/pausar. R: reiniciar.</p>
 
-    <div class="HUD">
+    <header>
+        <h1>Artilheiro Defender</h1>
+        <p>
+            Setas ← → ou A e D para mover |
+            Espaço para ATIRAR |
+            P para PAUSAR
+        </p>
+    </header>
+
+    <div class="hud">
         <span>Pontos: <strong id="score">0</strong></span>
-        <span>Recorde: <strong id="best">0</strong></span>
-        <span>Nível: <strong id="level">1</strong></span>
-        <span>Estado: <strong id="state">PRONTO</strong></span>
+        <span>Vidas: <strong id="lives">3</strong></span>
+        <span>Ondas: <strong id="wave">1</strong></span>
     </div>
 
-    <canvas id="game" width="480" height="560"
-        aria-label="Área do jogo Neon Breakout"></canvas>
+    <canvas id="game" width="480" height="640"></canvas>
 
-    <p class="hint">Destrua todos os tijolos. Não deixe a bola cair!</p>
+    <div class="instructions">
+        <span>DESTRUA OS INIMIGOS E PROTEJA A BASE!</span>
+        <span>Se um inimigo escapar pela base, você perde 1 vida.</span>
+    </div>
 
     <script src="script.js"></script>
+
 </body>
 </html>
